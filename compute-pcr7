@@ -1,0 +1,2 @@
+#!/bin/bash
+./target/release/compute-pcrs pcr7 --esp . --efivars efivars

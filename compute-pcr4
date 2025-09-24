@@ -1,0 +1,26 @@
+#!/bin/bash
+
+if [[ "$1" == "quay.io/travier/fedora-coreos-uki-cocl:42.20250901.3.0" ]]; then
+    podman run --pull=always --rm -ti --security-opt label=disable \
+      -v $PWD/target/release/compute-pcrs:/usr/bin/compute-pcrs \
+      "${1}" \
+        compute-pcrs pcr4 \
+            --shim /usr/lib/bootupd/updates/EFI/fedora/shimx64.efi \
+            --bootloader /usr/lib/bootupd/updates/EFI/fedora/grubx64.efi \
+            --uki /boot/EFI/Linux/6.15.10-200.fc42.x86_64.efi \
+            --uki-addon /boot/EFI/Linux/6.15.10-200.fc42.x86_64.efi.extra.d/ignition.addon.efi
+elif [[ "$1" == "quay.io/travier/fedora-coreos-uki-cocl:42.20250901.3.1" ]]; then
+    podman run --pull=always --rm -ti --security-opt label=disable \
+      -v $PWD/luks.addon.efi:/boot/EFI/Linux/luks.addon.efi \
+      -v $PWD/rd.neednet.addon.efi:/boot/EFI/Linux/rd.neednet.addon.efi \
+      -v $PWD/target/release/compute-pcrs:/usr/bin/compute-pcrs \
+      "${1}" \
+        compute-pcrs pcr4 \
+            --shim /usr/lib/bootupd/updates/EFI/fedora/shimx64.efi \
+            --bootloader /usr/lib/bootupd/updates/EFI/fedora/grubx64.efi \
+            --uki /boot/EFI/Linux/6.15.10-200.fc42.x86_64.efi \
+            --uki-addon /boot/EFI/Linux/luks.addon.efi \
+            --uki-addon /boot/EFI/Linux/rd.neednet.addon.efi
+else
+    echo "Unknown"
+fi
