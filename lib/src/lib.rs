@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
+use std::path::PathBuf;
+
 pub mod certs;
 mod esp;
 mod linux;
@@ -32,7 +34,60 @@ pub struct Pcr {
     pub parts: Vec<Part>,
 }
 
-pub fn compute_pcr4(kernels_dir: &str, esp_path: &str, uki: bool, secureboot: bool) -> Pcr {
+pub fn authentihash(binary: &PathBuf) -> Option<String> {
+    let pe = pefile::PeFile::load_from_file(&binary.to_string_lossy(), false)?;
+    Some(hex::encode(pe.authenticode()))
+}
+
+pub fn compute_pcr4(shim: &str, bootloader: &str, uki: &str, uki_addons: &Vec<String>) -> Pcr {
+    let ev_efi_action_hash: Vec<u8> =
+        Sha256::digest(b"Calling EFI Application from Boot Option").to_vec();
+    let ev_separator_hash: Vec<u8> = Sha256::digest(hex::decode("00000000").unwrap()).to_vec();
+
+    let mut hashes: Vec<(String, Vec<u8>)> = vec![];
+    hashes.push(("EV_EFI_ACTION".into(), ev_efi_action_hash));
+    hashes.push(("EV_SEPARATOR".into(), ev_separator_hash));
+
+    let mut bins: Vec<PathBuf> = vec![shim.into(), bootloader.into(), uki.into()];
+    for addon in uki_addons {
+        bins.push(addon.into());
+    }
+
+    // println!("{bins:?}");
+
+    let mut bin_hashes: Vec<(String, Vec<u8>)> = bins
+        .iter()
+        .map(|b| ("EV_EFI_BOOT_SERVICES_APPLICATION".into(), pefile::PeFile::load_from_file(&b.to_string_lossy(), false).expect("Can't open binary").authenticode()))
+        .collect();
+    hashes.append(&mut bin_hashes);
+
+    // Start with 0
+    let mut result =
+        hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
+            .unwrap()
+            .to_vec();
+
+    for (_p, h) in &hashes {
+        let mut hasher = Sha256::new();
+        hasher.update(result);
+        hasher.update(h);
+        result = hasher.finalize().to_vec();
+    }
+
+    Pcr {
+        id: 4,
+        value: hex::encode(result),
+        parts: hashes
+            .iter()
+            .map(|(p, h)| Part {
+                name: p.to_string(),
+                hash: hex::encode(h),
+            })
+            .collect(),
+    }
+}
+
+pub fn compute_pcr4_nouki(kernels_dir: &str, esp_path: &str, uki: bool, secureboot: bool) -> Pcr {
     let esp = esp::Esp::new(esp_path).unwrap();
 
     let ev_efi_action_hash: Vec<u8> =
